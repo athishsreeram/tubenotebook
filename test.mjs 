@@ -1,0 +1,331 @@
+// TubeNotebook — test.mjs
+// Run: node test.mjs
+
+import { readFileSync } from ‘fs’;
+
+// ── Inline the functions under test (mirrors tubenotebook.mjs) ───────────────
+
+function cleanVideoUrl(url) {
+try {
+const u = new URL(url.startsWith(‘http’) ? url : ‘https://’ + url);
+const v = u.searchParams.get(‘v’)
+|| (u.hostname === ‘youtu.be’ ? u.pathname.slice(1) : null);
+return v ? `https://www.youtube.com/watch?v=${v}` : url;
+} catch { return url; }
+}
+
+function isSingleVideo(input) {
+return input.includes(’/watch?v=’) || input.includes(‘youtu.be/’);
+}
+
+function resolveChannelUrl(input) {
+if (input.startsWith(’@’)) return `https://www.youtube.com/${input}/videos`;
+if (input.includes(‘youtube.com’) || input.includes(‘youtu.be’)) {
+if (input.includes(’/watch?v=’) || input.includes(‘youtu.be/’)) return input;
+if (input.includes(’/@’) || input.includes(’/channel/’) || input.includes(’/user/’)) {
+const u = new URL(input.startsWith(‘http’) ? input : ‘https://’ + input);
+return `https://www.youtube.com${u.pathname}/videos`;
+}
+}
+return input;
+}
+
+function extractVideosFromData(data, limit) {
+const videos = [];
+const walk = (obj) => {
+if (!obj || typeof obj !== ‘object’) return;
+if (videos.length >= limit) return;
+if (obj.videoId && obj.title) {
+const title = obj.title?.runs?.[0]?.text || obj.title?.simpleText || ‘Untitled’;
+videos.push({
+id: obj.videoId,
+title: title.trim(),
+url: `https://www.youtube.com/watch?v=${obj.videoId}`,
+meta: obj.publishedTimeText?.simpleText || ‘’,
+});
+return;
+}
+if (Array.isArray(obj)) { obj.forEach(walk); return; }
+Object.values(obj).forEach(walk);
+};
+walk(data);
+return videos.slice(0, limit);
+}
+
+// ── Test runner ───────────────────────────────────────────────────────────────
+let passed = 0, failed = 0;
+const failures = [];
+
+function test(name, fn) {
+try {
+fn();
+console.log(`  ✅  ${name}`);
+passed++;
+} catch (e) {
+console.log(`  ❌  ${name}`);
+console.log(`      ${e.message}`);
+failures.push({ name, error: e.message });
+failed++;
+}
+}
+
+function assert(actual, expected, label = ‘’) {
+if (actual !== expected)
+throw new Error(`${label}\n      got:      "${actual}"\n      expected: "${expected}"`);
+}
+
+function assertContains(str, sub) {
+if (!str.includes(sub)) throw new Error(`Expected string to contain: "${sub}"`);
+}
+
+function assertTruthy(val, msg) {
+if (!val) throw new Error(msg || `Expected truthy, got: ${val}`);
+}
+
+// ── SUITE 1: URL Utilities ────────────────────────────────────────────────────
+console.log(’\n\x1b[1m\x1b[35m📓 TubeNotebook — Test Suite\x1b[0m\n’);
+console.log(’\x1b[1mSuite 1: URL Utilities\x1b[0m’);
+
+test(‘cleanVideoUrl: strips tracking params from watch URL’, () => {
+assert(
+cleanVideoUrl(‘https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=30s&si=abc123&feature=share’),
+‘https://www.youtube.com/watch?v=dQw4w9WgXcQ’
+);
+});
+
+test(‘cleanVideoUrl: converts youtu.be to full URL’, () => {
+assert(
+cleanVideoUrl(‘https://youtu.be/dQw4w9WgXcQ?si=XYZtracking’),
+‘https://www.youtube.com/watch?v=dQw4w9WgXcQ’
+);
+});
+
+test(‘cleanVideoUrl: leaves already-clean URL unchanged’, () => {
+assert(
+cleanVideoUrl(‘https://www.youtube.com/watch?v=abc123’),
+‘https://www.youtube.com/watch?v=abc123’
+);
+});
+
+test(‘cleanVideoUrl: handles URL without http prefix’, () => {
+assert(
+cleanVideoUrl(‘www.youtube.com/watch?v=xyz999&list=PLabc’),
+‘https://www.youtube.com/watch?v=xyz999’
+);
+});
+
+// ── SUITE 2: Video Detection ──────────────────────────────────────────────────
+console.log(’\n\x1b[1mSuite 2: Video Detection\x1b[0m’);
+
+test(‘isSingleVideo: /watch?v= URL → true’, () => {
+assertTruthy(isSingleVideo(‘https://youtube.com/watch?v=abc123’), ‘expected true’);
+});
+
+test(‘isSingleVideo: youtu.be short URL → true’, () => {
+assertTruthy(isSingleVideo(‘https://youtu.be/abc123’), ‘expected true’);
+});
+
+test(‘isSingleVideo: @handle channel URL → false’, () => {
+assertTruthy(!isSingleVideo(‘https://youtube.com/@fireship’), ‘expected false’);
+});
+
+test(‘isSingleVideo: /channel/ URL → false’, () => {
+assertTruthy(!isSingleVideo(‘https://youtube.com/channel/UCsBjURrPoezykLs9EqgamOA’), ‘expected false’);
+});
+
+// ── SUITE 3: Channel URL Resolution ──────────────────────────────────────────
+console.log(’\n\x1b[1mSuite 3: Channel URL Resolution\x1b[0m’);
+
+test(‘resolveChannelUrl: bare @handle → /videos URL’, () => {
+assert(
+resolveChannelUrl(’@aidotengineer’),
+‘https://www.youtube.com/@aidotengineer/videos’
+);
+});
+
+test(‘resolveChannelUrl: full @handle URL → /videos URL’, () => {
+assert(
+resolveChannelUrl(‘https://youtube.com/@fireship’),
+‘https://www.youtube.com/@fireship/videos’
+);
+});
+
+test(‘resolveChannelUrl: /channel/ID format’, () => {
+assert(
+resolveChannelUrl(‘https://youtube.com/channel/UCsBjURrPoezykLs9EqgamOA’),
+‘https://www.youtube.com/channel/UCsBjURrPoezykLs9EqgamOA/videos’
+);
+});
+
+test(‘resolveChannelUrl: single video URL passthrough’, () => {
+const url = ‘https://youtube.com/watch?v=dQw4w9WgXcQ’;
+assert(resolveChannelUrl(url), url);
+});
+
+// ── SUITE 4: ytInitialData Parsing ────────────────────────────────────────────
+console.log(’\n\x1b[1mSuite 4: ytInitialData Video Extraction\x1b[0m’);
+
+test(‘extractVideosFromData: extracts from runs title format’, () => {
+const data = {
+items: [
+{ videoId: ‘vid001’, title: { runs: [{ text: ‘Build an AI Agent’ }] } },
+]
+};
+const videos = extractVideosFromData(data, 10);
+assert(videos[0].id, ‘vid001’);
+assert(videos[0].title, ‘Build an AI Agent’);
+assert(videos[0].url, ‘https://www.youtube.com/watch?v=vid001’);
+});
+
+test(‘extractVideosFromData: extracts from simpleText title format’, () => {
+const data = {
+items: [{ videoId: ‘vid002’, title: { simpleText: ‘RAG vs Fine-Tuning’ } }]
+};
+const videos = extractVideosFromData(data, 10);
+assert(videos[0].title, ‘RAG vs Fine-Tuning’);
+});
+
+test(‘extractVideosFromData: finds videos in deeply nested structure’, () => {
+const data = {
+contents: {
+twoColumnBrowseResultsRenderer: {
+tabs: [{
+tabRenderer: {
+content: {
+richGridRenderer: {
+contents: [
+{ richItemRenderer: { content: {
+videoRenderer: {
+videoId: ‘deep001’,
+title: { runs: [{ text: ‘Deep Nested Video’ }] }
+}
+}}},
+]
+}
+}
+}
+}]
+}
+}
+};
+const videos = extractVideosFromData(data, 10);
+assertTruthy(videos.some(v => v.id === ‘deep001’), ‘deep nested video not found’);
+});
+
+test(‘extractVideosFromData: respects limit’, () => {
+const data = {
+items: Array.from({ length: 20 }, (_, i) => ({
+videoId: `v${i}`,
+title: { simpleText: `Video ${i}` }
+}))
+};
+const videos = extractVideosFromData(data, 5);
+assert(videos.length, 5, ‘should limit to 5’);
+});
+
+test(‘extractVideosFromData: skips nodes without both videoId and title’, () => {
+const data = {
+channelId: ‘abc’,
+channelName: ‘Test’,
+items: [
+{ videoId: ‘v1’, title: { simpleText: ‘Good’ } },
+{ videoId: ‘v2’ },          // missing title
+{ title: { simpleText: ‘No ID’ } },  // missing videoId
+]
+};
+const videos = extractVideosFromData(data, 10);
+assert(videos.length, 1, ‘should only find 1 valid video’);
+});
+
+test(‘extractVideosFromData: handles empty data gracefully’, () => {
+const videos = extractVideosFromData({}, 10);
+assert(videos.length, 0);
+});
+
+// ── SUITE 5: File Integrity ───────────────────────────────────────────────────
+console.log(’\n\x1b[1mSuite 5: File Integrity Checks\x1b[0m’);
+
+test(‘manifest.json: is valid JSON’, () => {
+JSON.parse(readFileSync(’./manifest.json’, ‘utf8’));
+});
+
+test(‘manifest.json: Manifest V3’, () => {
+const m = JSON.parse(readFileSync(’./manifest.json’, ‘utf8’));
+assert(m.manifest_version, 3, ‘must be MV3’);
+});
+
+test(‘manifest.json: required permissions’, () => {
+const m = JSON.parse(readFileSync(’./manifest.json’, ‘utf8’));
+[‘activeTab’, ‘scripting’, ‘clipboardWrite’].forEach(p => {
+assertTruthy(m.permissions.includes(p), `missing permission: ${p}`);
+});
+});
+
+test(‘manifest.json: host_permissions includes YouTube and NotebookLM’, () => {
+const m = JSON.parse(readFileSync(’./manifest.json’, ‘utf8’));
+const hp = m.host_permissions.join(’ ’);
+assertContains(hp, ‘youtube.com’);
+assertContains(hp, ‘notebooklm.google.com’);
+});
+
+test(‘popup.html: all required element IDs present’, () => {
+const html = readFileSync(’./popup.html’, ‘utf8’);
+[‘open-notebook-btn’, ‘copy-url-btn’, ‘vid-title’, ‘vid-url’,
+‘batch-notebook-btn’, ‘video-list’, ‘sel-count’, ‘select-all-btn’].forEach(id => {
+assertContains(html, `id="${id}"`);
+});
+});
+
+test(‘content.js: floating button with correct ID’, () => {
+const src = readFileSync(’./content.js’, ‘utf8’);
+assertContains(src, ‘tubenotebook-btn’);
+});
+
+test(‘content.js: opens NotebookLM on click’, () => {
+const src = readFileSync(’./content.js’, ‘utf8’);
+assertContains(src, ‘notebooklm.google.com’);
+});
+
+test(‘content.js: handles YouTube SPA navigation’, () => {
+const src = readFileSync(’./content.js’, ‘utf8’);
+assertContains(src, ‘yt-navigate-finish’);
+});
+
+test(‘popup.js: YouTube DOM selectors present’, () => {
+const src = readFileSync(’./popup.js’, ‘utf8’);
+assertContains(src, ‘ytd-rich-item-renderer’);
+});
+
+test(‘tubenotebook.mjs: help text present’, () => {
+const src = readFileSync(’./tubenotebook.mjs’, ‘utf8’);
+assertContains(src, ‘–limit’);
+assertContains(src, ‘–copy’);
+assertContains(src, ‘–open’);
+});
+
+test(‘tubenotebook.mjs: no require() calls (ESM only)’, () => {
+const src = readFileSync(’./tubenotebook.mjs’, ‘utf8’);
+if (/\brequire\s*(/.test(src)) throw new Error(‘found require() — must use ESM import’);
+});
+
+test(‘tubenotebook.mjs: no hardcoded npm dependencies’, () => {
+const src = readFileSync(’./tubenotebook.mjs’, ‘utf8’);
+// Should only import from node built-ins
+const imports = […src.matchAll(/^import .+ from [’”](.+)[’”]/gm)].map(m => m[1]);
+const external = imports.filter(i => !i.startsWith(‘node:’) && ![‘fs’,‘path’,‘process’,‘child_process’,‘os’].includes(i));
+if (external.length) throw new Error(`external npm imports found: ${external.join(', ')}`);
+});
+
+// ── Summary ───────────────────────────────────────────────────────────────────
+console.log(’\n’ + ‘─’.repeat(50));
+console.log(`\x1b[1mResults: ${passed}/${passed + failed} passed\x1b[0m`);
+
+if (failed === 0) {
+console.log(’\x1b[32m\x1b[1m🎉 All tests passed — ready to push to GitHub!\x1b[0m\n’);
+process.exit(0);
+} else {
+console.log(`\x1b[31m✗ ${failed} test(s) failed:\x1b[0m`);
+failures.forEach(f => console.log(`  - ${f.name}`));
+console.log(’’);
+process.exit(1);
+}
