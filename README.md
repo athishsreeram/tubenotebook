@@ -1,135 +1,135 @@
-# 🚀 YouTube Channel Data Extractor (Simple Guide)
+# 📺 TubeNotebook
 
-## 👋 What is this?
+> **YouTube Channel Intelligence — No API Key. No Setup. Just Run.**
 
-This is a simple tool that lets you:
+Extract video titles, URLs, metadata, engagement scores, and full transcripts from any YouTube channel. One notebook, all in Google Colab.
 
-👉 Enter a YouTube channel
-👉 Run one script
-👉 Get all video data (titles, views, tags, etc.)
+-----
 
-No complex setup. Works in your browser using Google Colab.
+## What It Does
 
----
+|Feature           |Details                                                                 |
+|------------------|------------------------------------------------------------------------|
+|🎯 Channel scan    |Get all video titles + URLs from any `@handle` or channel ID            |
+|📊 Rich metadata   |Views, likes, comments, duration, tags, description                     |
+|💡 Engagement score|`(likes + comments) / views` — find your highest-impact videos          |
+|📝 Transcripts     |Full text transcript for any video (auto-fallback if no manual captions)|
+|💾 Exports         |CSV (open in Excel/Sheets) + JSON (for devs / AI pipelines)             |
 
-## ⚡ What you get
+-----
 
-For each video:
+## Notebooks
 
-* Title
-* URL
-* Views
-* Likes & comments
-* Duration
-* Tags (keywords)
-* Engagement score
+|File                                                                                                                                                                      |What it does                                 |
+|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------|
+|[`TubeNotebook.ipynb`](./TubeNotebook.ipynb)                                                                                                                              |⭐ **Main notebook** — everything in one place|
+|[`YoutubeVideoUrl.ipynb`](./YoutubeVideoUrl.ipynb)                                                                                                                        |Legacy — channel URL listing only            |
+|[`Transcript_For_Video.ipynb`](./Transcript_For_Video.ipynb)                                                                                                              |Legacy — single video transcript             |
+|[`top3videos_metadata_transcript_preview_and_saves_everything_to_CSV_and_JSON.ipynb`](./top3videos_metadata_transcript_preview_and_saves_everything_to_CSV_and_JSON.ipynb)|Legacy — top 3 video deep fetch              |
 
-👉 Output files:
 
-* CSV (open in Excel)
-* JSON (for developers)
+> 💡 Use **`TubeNotebook.ipynb`** — it replaces all three legacy notebooks.
 
----
+-----
 
-## 🧑‍💻 How to use (Step-by-step)
+## Quick Start
 
-### 1. Open Google Colab
+### 1. Open in Google Colab
 
-Go to: https://colab.research.google.com/
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/athishsreeram/tubenotebook/blob/main/TubeNotebook.ipynb)
 
----
+Or go to [colab.research.google.com](https://colab.research.google.com/) → File → Open notebook → GitHub → paste this repo URL.
 
-### 2. Sign in
-
-* Use your Google account (Gmail)
-* Click **“New Notebook”**
-
----
-
-### 3. Paste the code
-
-* Copy the Python code from this repo
-* Paste it into the notebook
-
----
-
-### 4. Run the code
-
-* Click ▶️ Run
-* Wait ~30–60 seconds
-
----
-
-### 5. Download results
-
-* On the left sidebar → click **Files**
-* Download:
-
-  * `youtube_data_*.csv`
-  * `youtube_data_*.json`
-
----
-
-## ⚙️ Change the channel
-
-Edit this line in the code:
+### 2. Install dependencies (Step 1 cell)
 
 ```python
-CHANNEL_URL = "https://www.youtube.com/@rajshamani/videos"
+!pip install yt-dlp youtube-transcript-api
 ```
 
-👉 Replace with any YouTube channel you want
-
----
-
-## ⚙️ Optional settings
+### 3. Set your channel (Step 2 cell)
 
 ```python
-MAX_VIDEOS = 100        # how many videos to scan
-DEEP_FETCH_TOP_N = 10   # how many videos to analyze deeply
+CHANNEL_URL      = "https://www.youtube.com/@rajshamani/videos"
+MAX_VIDEOS       = 50      # None = all videos
+DEEP_FETCH_TOP_N = 5       # how many to analyze deeply
+FETCH_TRANSCRIPTS = True   # set False for faster runs
+TRANSCRIPT_LANG  = "en"    # "hi", "ta", "es", etc.
 ```
 
----
+### 4. Run all cells → Download your files
 
-## 🧠 What is engagement score?
+Go to **Runtime → Run all**, then find your files in the **left sidebar → Files tab**.
 
-```python
-engagement_score = (likes + comments) / views
+-----
+
+## Output Files
+
+After running, you’ll get:
+
+```
+tube_videos_YYYYMMDD_HHMMSS.csv     ← All videos: title, URL, date, duration
+tube_rich_YYYYMMDD_HHMMSS.csv       ← Top N: views, likes, comments, engagement%
+tube_full_YYYYMMDD_HHMMSS.json      ← Full data + transcripts (for AI/dev use)
+transcript_<video_id>.txt           ← Single-video transcript (Step 8)
 ```
 
-👉 Helps you find videos that people actually interact with
+-----
 
----
+## What Is Engagement Score?
 
-## 💡 What can you use this for?
-
-* Analyze any creator’s content
-* Find popular topics
-* Build content ideas
-* Feed data into AI tools
-
----
-
-## ❗ Common issues
-
-* Not working? → Run this first:
-
-```python
-!pip install yt-dlp
+```
+engagement_score = (likes + comments) / views × 100
 ```
 
-* Too slow? → Reduce:
+A video with 1M views but 500K likes + comments (50%) is far more impactful than one with 5M views and 10K interactions (0.2%). Use this to find your channel’s real winners.
 
-```python
-MAX_VIDEOS = 50
+-----
+
+## Use Cases
+
+- **Content creators** — Analyze what’s working on competitor channels
+- **Researchers** — Build transcript datasets for NLP / AI training
+- **Marketers** — Find high-engagement topics in a niche
+- **AI pipelines** — Feed structured YouTube data into LLM workflows
+- **Personal use** — Archive a channel’s content index
+
+-----
+
+## Troubleshooting
+
+|Problem                                       |Fix                                                                           |
+|----------------------------------------------|------------------------------------------------------------------------------|
+|`ModuleNotFoundError`                         |Run the install cell again: `!pip install yt-dlp youtube-transcript-api`      |
+|No videos found                               |Check the channel URL — make sure it ends in `/videos` or is a valid `@handle`|
+|Transcript returns `[No transcript available]`|The video has no captions. Try `TRANSCRIPT_LANG = "hi"` or another language   |
+|Slow on large channels                        |Reduce `MAX_VIDEOS = 50` for faster scans                                     |
+|Rate limited                                  |Add `time.sleep(1)` between calls or reduce `DEEP_FETCH_TOP_N`                |
+
+-----
+
+## Tech Stack
+
+|Tool                                                                         |Purpose                                     |
+|-----------------------------------------------------------------------------|--------------------------------------------|
+|[`yt-dlp`](https://github.com/yt-dlp/yt-dlp)                                 |Channel + video metadata (no API key needed)|
+|[`youtube-transcript-api`](https://github.com/jdepoix/youtube-transcript-api)|Transcript extraction                       |
+|Python stdlib (`csv`, `json`, `datetime`)                                    |Export + formatting                         |
+
+-----
+
+## Local Usage (Outside Colab)
+
+```bash
+pip install yt-dlp youtube-transcript-api jupyter
+jupyter notebook TubeNotebook.ipynb
 ```
 
----
+-----
 
-## ✅ That’s it
+## Author
 
-👉 Copy → Paste → Run → Download
+Built by **[@athishsreeram](https://github.com/athishsreeram)**
 
-You now have a **YouTube data engine**.
+-----
 
----
+*No YouTube Data API key required. Uses public metadata only.*
